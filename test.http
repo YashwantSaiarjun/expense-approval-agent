@@ -1,0 +1,26 @@
+### Health check
+GET http://127.0.0.1:8000/health
+
+### Valid submission
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_123",
+  "amount": 45.50,
+  "category": "meals",
+  "description": "Client lunch meeting",
+  "expense_date": "2026-09-01"
+}
+
+### Invalid submission (bad category, should fail with 422)
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_123",
+  "amount": 45.50,
+  "category": "snacks",
+  "description": "Client lunch meeting",
+  "expense_date": "2026-09-01"
+}
