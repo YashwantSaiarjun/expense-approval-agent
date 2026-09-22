@@ -24,3 +24,41 @@ Content-Type: application/json
   "description": "Client lunch meeting",
   "expense_date": "2026-09-01"
 }
+
+### Test 1: Small amount — should auto-approve
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_1",
+  "amount": 20,
+  "category": "meals",
+  "description": "Team lunch outing",
+  "expense_date": "2026-09-01"
+}
+
+### Test 2: Mid-range with receipt — should need AI review
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_1",
+  "amount": 300,
+  "category": "travel",
+  "description": "Client site visit travel",
+  "expense_date": "2026-09-01",
+  "receipt_url": "http://example.com/receipt1.pdf"
+}
+
+### Test 3: Huge amount — should auto-reject
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_1",
+  "amount": 6000,
+  "category": "travel",
+  "description": "Company retreat booking",
+  "expense_date": "2026-09-01",
+  "receipt_url": "http://example.com/receipt2.pdf"
+}
