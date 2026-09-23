@@ -21,6 +21,19 @@ class RuleResult:
 
 
 def evaluate_deterministic_rules(expense: ExpenseSubmission) -> RuleResult:
+
+    """
+    Evaluate an expense against hard business rules, with no AI involvement.
+
+    Returns one of:
+      - AUTO_APPROVED: safe to approve immediately
+      - AUTO_REJECTED: fails a hard policy rule
+      - NEEDS_AI_REVIEW: ambiguous, requires LLM judgment (Day 7-9)
+
+    This function is deterministic and side-effect free — same input
+    always produces same output, making it fully unit-testable and auditable.
+    """
+    
     """
     Pure function: same input always produces same output.
     No AI, no randomness, no side effects — this is what makes it fast,
