@@ -62,3 +62,42 @@ Content-Type: application/json
   "expense_date": "2026-09-01",
   "receipt_url": "http://example.com/receipt2.pdf"
 }
+
+### LLM Test 1: Clear approve (high confidence expected)
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_1",
+  "amount": 180,
+  "category": "travel",
+  "description": "Uber rides to client office for 3-day onsite visit",
+  "expense_date": "2026-09-01",
+  "receipt_url": "http://example.com/receipt.pdf"
+}
+
+### LLM Test 2: Vague description (low confidence expected → human review)
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_2",
+  "amount": 520,
+  "category": "client_entertainment",
+  "description": "Team gathering expenses",
+  "expense_date": "2026-09-01",
+  "receipt_url": "http://example.com/receipt.pdf"
+}
+
+### LLM Test 3: Suspicious personal expense (high confidence reject expected)
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_3",
+  "amount": 300,
+  "category": "other",
+  "description": "Personal shopping items for home",
+  "expense_date": "2026-09-01",
+  "receipt_url": "http://example.com/receipt.pdf"
+}
