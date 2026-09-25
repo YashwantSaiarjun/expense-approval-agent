@@ -6,12 +6,15 @@ from app.rules import evaluate_deterministic_rules, RuleOutcome
 from app.db import get_db, engine
 from app.models import Base, Expense, AuditLog, ExpenseStatus
 from app.llm import evaluate_expense_with_llm
+from fastapi import FastAPI, Depends, HTTPException
+from app.schemas import ExpenseSubmission, ExpenseResponse, ReviewAction, ExpenseDetail
+from typing import List
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="PolicyPilot — Expense Approval Agent")
 
-CONFIDENCE_THRESHOLD = 0.80
+CONFIDENCE_THRESHOLD = 0.90
 
 @app.post("/expenses", response_model=ExpenseResponse)
 def submit_expense(expense: ExpenseSubmission, db: Session = Depends(get_db)):
@@ -78,3 +81,79 @@ def submit_expense(expense: ExpenseSubmission, db: Session = Depends(get_db)):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/review/pending", response_model=List[ExpenseDetail])
+def get_pending_reviews(db: Session = Depends(get_db)):
+    pending = db.query(Expense).filter(
+        Expense.status == ExpenseStatus.PENDING_HUMAN_REVIEW
+    ).all()
+    return pending
+
+
+@app.post("/review/{expense_id}/approve", response_model=ExpenseResponse)
+def approve_expense(expense_id: str, action: ReviewAction, db: Session = Depends(get_db)):
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    if expense.status != ExpenseStatus.PENDING_HUMAN_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expense is not pending review, current status: {expense.status}"
+        )
+
+    old_status = expense.status.value
+    expense.status = ExpenseStatus.HUMAN_APPROVED
+
+    audit = AuditLog(
+        id=str(uuid4()),
+        expense_id=expense_id,
+        from_status=old_status,
+        to_status=ExpenseStatus.HUMAN_APPROVED.value,
+        actor=f"manager:{action.manager_id}",
+        reason=action.note or "Approved by manager",
+    )
+    db.add(audit)
+    db.commit()
+
+    return ExpenseResponse(
+        id=expense_id,
+        status=ExpenseStatus.HUMAN_APPROVED.value,
+        message=f"Expense approved by manager {action.manager_id}"
+    )
+
+
+@app.post("/review/{expense_id}/reject", response_model=ExpenseResponse)
+def reject_expense(expense_id: str, action: ReviewAction, db: Session = Depends(get_db)):
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    if expense.status != ExpenseStatus.PENDING_HUMAN_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expense is not pending review, current status: {expense.status}"
+        )
+
+    old_status = expense.status.value
+    expense.status = ExpenseStatus.HUMAN_REJECTED
+
+    audit = AuditLog(
+        id=str(uuid4()),
+        expense_id=expense_id,
+        from_status=old_status,
+        to_status=ExpenseStatus.HUMAN_REJECTED.value,
+        actor=f"manager:{action.manager_id}",
+        reason=action.note or "Rejected by manager",
+    )
+    db.add(audit)
+    db.commit()
+
+    return ExpenseResponse(
+        id=expense_id,
+        status=ExpenseStatus.HUMAN_REJECTED.value,
+        message=f"Expense rejected by manager {action.manager_id}"
+    )

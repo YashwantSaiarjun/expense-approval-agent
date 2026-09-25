@@ -27,3 +27,21 @@ class LLMDecision(BaseModel):
     decision: str = Field(pattern="^(approve|reject)$")
     confidence: float = Field(ge=0.0, le=1.0)
     reason: str = Field(min_length=10, max_length=500)
+
+class ReviewAction(BaseModel):
+    manager_id: str = Field(min_length=1)
+    note: str | None = None
+
+class ExpenseDetail(BaseModel):
+    id: str
+    employee_id: str
+    amount: float
+    category: str
+    description: str
+    status: str
+    llm_decision: str | None
+    llm_confidence: float | None
+    llm_reason: str | None
+
+    class Config:
+        from_attributes = True    
