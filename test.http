@@ -101,3 +101,36 @@ Content-Type: application/json
   "expense_date": "2026-09-01",
   "receipt_url": "http://example.com/receipt.pdf"
 }
+
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_5",
+  "amount": 150,
+  "category": "meals",
+  "description": "Dinner but not sure if client was present",
+  "expense_date": "2026-09-01",
+  "receipt_url": "http://example.com/receipt.pdf"
+}
+
+### Get all pending human review expenses
+GET http://127.0.0.1:8000/review/pending
+
+### Approve an expense (replace EXPENSE_ID with real id from above)
+POST http://127.0.0.1:8000/review/a4e7b83c-a3de-4dc2-82c2-c8631555cf3e/approve
+Content-Type: application/json
+
+{
+  "manager_id": "manager_john",
+  "note": "Verified with employee, legitimate business expense"
+}
+
+### Reject an expense (replace EXPENSE_ID with real id from above)
+POST http://127.0.0.1:8000/review/EXPENSE_ID/reject
+Content-Type: application/json
+
+{
+  "manager_id": "manager_john",
+  "note": "Description too vague, cannot verify business purpose"
+}
