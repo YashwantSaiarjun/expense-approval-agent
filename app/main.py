@@ -9,6 +9,9 @@ from app.llm import evaluate_expense_with_llm
 from fastapi import FastAPI, Depends, HTTPException
 from app.schemas import ExpenseSubmission, ExpenseResponse, ReviewAction, ExpenseDetail
 from typing import List
+from app.models import AuditLog
+from pydantic import BaseModel
+from datetime import datetime
 
 Base.metadata.create_all(bind=engine)
 
@@ -19,64 +22,80 @@ CONFIDENCE_THRESHOLD = 0.90
 @app.post("/expenses", response_model=ExpenseResponse)
 def submit_expense(expense: ExpenseSubmission, db: Session = Depends(get_db)):
     expense_id = str(uuid4())
-    rule_result = evaluate_deterministic_rules(expense)
 
-    status_map = {
-        RuleOutcome.AUTO_APPROVED: ExpenseStatus.AUTO_APPROVED,
-        RuleOutcome.AUTO_REJECTED: ExpenseStatus.AUTO_REJECTED,
-        RuleOutcome.NEEDS_AI_REVIEW: ExpenseStatus.AI_REVIEW,
-    }
-    final_status = status_map[rule_result.outcome]
-    llm_decision = None
-    llm_confidence = None
-    llm_reason = None
+    try:
+        rule_result = evaluate_deterministic_rules(expense)
 
-    if rule_result.outcome == RuleOutcome.NEEDS_AI_REVIEW:
-        llm_result = evaluate_expense_with_llm(expense)
-        llm_decision = llm_result.decision
-        llm_confidence = llm_result.confidence
-        llm_reason = llm_result.reason
+        status_map = {
+            RuleOutcome.AUTO_APPROVED: ExpenseStatus.AUTO_APPROVED,
+            RuleOutcome.AUTO_REJECTED: ExpenseStatus.AUTO_REJECTED,
+            RuleOutcome.NEEDS_AI_REVIEW: ExpenseStatus.AI_REVIEW,
+        }
+        final_status = status_map[rule_result.outcome]
+        llm_decision = None
+        llm_confidence = None
+        llm_reason = None
 
-        if llm_confidence >= CONFIDENCE_THRESHOLD:
-            final_status = (
-                ExpenseStatus.CONFIDENT_APPROVED
-                if llm_result.decision == "approve"
-                else ExpenseStatus.CONFIDENT_REJECTED
-            )
-        else:
-            final_status = ExpenseStatus.PENDING_HUMAN_REVIEW
+        if rule_result.outcome == RuleOutcome.NEEDS_AI_REVIEW:
+            try:
+                llm_result = evaluate_expense_with_llm(expense)
+                llm_decision = llm_result.decision
+                llm_confidence = llm_result.confidence
+                llm_reason = llm_result.reason
 
-    db_expense = Expense(
-        id=expense_id,
-        employee_id=expense.employee_id,
-        amount=expense.amount,
-        category=expense.category,
-        description=expense.description,
-        expense_date=str(expense.expense_date),
-        receipt_url=expense.receipt_url,
-        status=final_status,
-        llm_decision=llm_decision,
-        llm_confidence=llm_confidence,
-        llm_reason=llm_reason,
-    )
-    db.add(db_expense)
+                if llm_confidence >= CONFIDENCE_THRESHOLD:
+                    final_status = (
+                        ExpenseStatus.CONFIDENT_APPROVED
+                        if llm_result.decision == "approve"
+                        else ExpenseStatus.CONFIDENT_REJECTED
+                    )
+                else:
+                    final_status = ExpenseStatus.PENDING_HUMAN_REVIEW
 
-    audit = AuditLog(
-        id=str(uuid4()),
-        expense_id=expense_id,
-        from_status=None,
-        to_status=final_status.value,
-        actor="system:rules_engine" if rule_result.outcome != RuleOutcome.NEEDS_AI_REVIEW else "system:llm",
-        reason=llm_reason or rule_result.reason,
-    )
-    db.add(audit)
-    db.commit()
+            except Exception as llm_error:
+                # LLM failed after all retries — route to human review
+                final_status = ExpenseStatus.PENDING_HUMAN_REVIEW
+                llm_reason = f"LLM unavailable after retries: {str(llm_error)[:100]}"
 
-    return ExpenseResponse(
-        id=expense_id,
-        status=final_status.value,
-        message=llm_reason or rule_result.reason
-    )
+        db_expense = Expense(
+            id=expense_id,
+            employee_id=expense.employee_id,
+            amount=expense.amount,
+            category=expense.category,
+            description=expense.description,
+            expense_date=str(expense.expense_date),
+            receipt_url=expense.receipt_url,
+            status=final_status,
+            llm_decision=llm_decision,
+            llm_confidence=llm_confidence,
+            llm_reason=llm_reason,
+        )
+        db.add(db_expense)
+
+        audit = AuditLog(
+            id=str(uuid4()),
+            expense_id=expense_id,
+            from_status=None,
+            to_status=final_status.value,
+            actor="system:rules_engine" if rule_result.outcome != RuleOutcome.NEEDS_AI_REVIEW else "system:llm",
+            reason=llm_reason or rule_result.reason,
+        )
+        db.add(audit)
+        db.commit()
+
+        return ExpenseResponse(
+            id=expense_id,
+            status=final_status.value,
+            message=llm_reason or rule_result.reason
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Expense submission failed: {str(e)[:200]}"
+        )
+
 
 @app.get("/health")
 def health():
@@ -157,3 +176,49 @@ def reject_expense(expense_id: str, action: ReviewAction, db: Session = Depends(
         status=ExpenseStatus.HUMAN_REJECTED.value,
         message=f"Expense rejected by manager {action.manager_id}"
     )
+
+
+class AuditEntry(BaseModel):
+    id: str
+    expense_id: str
+    from_status: str | None
+    to_status: str
+    actor: str
+    reason: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+@app.get("/expenses/{expense_id}", response_model=ExpenseDetail)
+def get_expense(expense_id: str, db: Session = Depends(get_db)):
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return expense
+
+
+@app.get("/expenses/{expense_id}/audit")
+def get_audit_trail(expense_id: str, db: Session = Depends(get_db)):
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    logs = db.query(AuditLog).filter(
+        AuditLog.expense_id == expense_id
+    ).order_by(AuditLog.created_at.asc()).all()
+
+    return {
+        "expense_id": expense_id,
+        "current_status": expense.status.value,
+        "history": [
+            {
+                "from": log.from_status,
+                "to": log.to_status,
+                "actor": log.actor,
+                "reason": log.reason,
+                "at": str(log.created_at)
+            }
+            for log in logs
+        ]
+    }

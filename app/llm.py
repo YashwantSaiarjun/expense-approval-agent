@@ -1,6 +1,7 @@
 from google import genai
 from app.schemas import ExpenseSubmission, LLMDecision
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import os
 import json
 
@@ -34,6 +35,20 @@ IMPORTANT:
 }
 """
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception),
+    reraise=True
+)
+def call_gemini(prompt: str) -> str:
+    response = client.models.generate_content(
+        model="gemini-3.6-flash",
+        contents=prompt
+    )
+    return response.text.strip()
+
+
 def evaluate_expense_with_llm(expense: ExpenseSubmission) -> LLMDecision:
     user_message = f"""
 Evaluate this expense against company policy:
@@ -47,15 +62,8 @@ Evaluate this expense against company policy:
 
 Return your evaluation as JSON only.
 """
+    raw = call_gemini(f"{SYSTEM_PROMPT}\n\n{user_message}")
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=f"{SYSTEM_PROMPT}\n\n{user_message}"
-    )
-
-    raw = response.text.strip()
-
-    # Strip markdown code fences if Gemini adds them anyway
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):

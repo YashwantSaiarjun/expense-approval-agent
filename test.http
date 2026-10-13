@@ -102,6 +102,30 @@ Content-Type: application/json
   "receipt_url": "http://example.com/receipt.pdf"
 }
 
+
+
+### Get all pending human review expenses
+GET http://127.0.0.1:8000/review/pending
+
+### Approve an expense (replace EXPENSE_ID with real id from above)
+POST http://127.0.0.1:8000/review/5424f3ed-df0f-4aa6-909a-95568b846e09/approve
+Content-Type: application/json
+
+{
+  "manager_id": "manager_john",
+  "note": "Verified with employee, legitimate business expense"
+}
+
+### Reject an expense (replace EXPENSE_ID with real id from above)
+POST http://127.0.0.1:8000/review/5424f3ed-df0f-4aa6-909a-95568b846e09/reject
+Content-Type: application/json
+
+{
+  "manager_id": "manager_john",
+  "note": "Description too vague, cannot verify business purpose"
+}
+
+### Test 4: Ambiguous description (should trigger human review)
 POST http://127.0.0.1:8000/expenses
 Content-Type: application/json
 
@@ -114,23 +138,9 @@ Content-Type: application/json
   "receipt_url": "http://example.com/receipt.pdf"
 }
 
-### Get all pending human review expenses
-GET http://127.0.0.1:8000/review/pending
 
-### Approve an expense (replace EXPENSE_ID with real id from above)
-POST http://127.0.0.1:8000/review/a4e7b83c-a3de-4dc2-82c2-c8631555cf3e/approve
-Content-Type: application/json
+### Get single expense by ID
+GET http://127.0.0.1:8000/expenses/PASTE_ID_HERE
 
-{
-  "manager_id": "manager_john",
-  "note": "Verified with employee, legitimate business expense"
-}
-
-### Reject an expense (replace EXPENSE_ID with real id from above)
-POST http://127.0.0.1:8000/review/EXPENSE_ID/reject
-Content-Type: application/json
-
-{
-  "manager_id": "manager_john",
-  "note": "Description too vague, cannot verify business purpose"
-}
+### Get full audit trail for an expense
+GET http://127.0.0.1:8000/expenses/PASTE_ID_HERE/audit
