@@ -9,6 +9,9 @@ from app.llm import evaluate_expense_with_llm
 from fastapi import FastAPI, Depends, HTTPException
 from app.schemas import ExpenseSubmission, ExpenseResponse, ReviewAction, ExpenseDetail
 from typing import List
+from app.models import AuditLog
+from pydantic import BaseModel
+from datetime import datetime
 
 Base.metadata.create_all(bind=engine)
 
@@ -157,3 +160,49 @@ def reject_expense(expense_id: str, action: ReviewAction, db: Session = Depends(
         status=ExpenseStatus.HUMAN_REJECTED.value,
         message=f"Expense rejected by manager {action.manager_id}"
     )
+
+
+class AuditEntry(BaseModel):
+    id: str
+    expense_id: str
+    from_status: str | None
+    to_status: str
+    actor: str
+    reason: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+@app.get("/expenses/{expense_id}", response_model=ExpenseDetail)
+def get_expense(expense_id: str, db: Session = Depends(get_db)):
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return expense
+
+
+@app.get("/expenses/{expense_id}/audit")
+def get_audit_trail(expense_id: str, db: Session = Depends(get_db)):
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    logs = db.query(AuditLog).filter(
+        AuditLog.expense_id == expense_id
+    ).order_by(AuditLog.created_at.asc()).all()
+
+    return {
+        "expense_id": expense_id,
+        "current_status": expense.status.value,
+        "history": [
+            {
+                "from": log.from_status,
+                "to": log.to_status,
+                "actor": log.actor,
+                "reason": log.reason,
+                "at": str(log.created_at)
+            }
+            for log in logs
+        ]
+    }
