@@ -140,7 +140,20 @@ Content-Type: application/json
 
 
 ### Get single expense by ID
-GET http://127.0.0.1:8000/expenses/PASTE_ID_HERE
+GET http://127.0.0.1:8000/expenses/c490ca6e-b911-4d40-a754-829c516ded30
 
 ### Get full audit trail for an expense
-GET http://127.0.0.1:8000/expenses/PASTE_ID_HERE/audit
+GET http://127.0.0.1:8000/expenses/c490ca6e-b911-4d40-a754-829c516ded30/audit
+
+
+POST http://127.0.0.1:8000/expenses
+Content-Type: application/json
+
+{
+  "employee_id": "emp_1",
+  "amount": 180,
+  "category": "travel",
+  "description": "Uber rides to client office for 3-day onsite visit",
+  "expense_date": "2026-10-16",
+  "receipt_url": "http://example.com/receipt.pdf"
+}
