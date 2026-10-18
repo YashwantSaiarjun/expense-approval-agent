@@ -7,8 +7,6 @@ import json
 
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-
 SYSTEM_PROMPT = """
 You are a strict enterprise expense policy compliance officer at a mid-sized technology company.
 Your job is to evaluate employee expense submissions and determine whether they comply with company policy.
@@ -91,6 +89,14 @@ EXAMPLES OF GOOD REASONS:
 - "Approved: software license directly used for development work, receipt provided, amount within range."
 """
 
+
+def get_client():
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY environment variable not set")
+    return genai.Client(api_key=api_key)
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -98,6 +104,7 @@ EXAMPLES OF GOOD REASONS:
     reraise=True
 )
 def call_gemini(prompt: str) -> str:
+    client = get_client()
     response = client.models.generate_content(
         model="gemini-3.6-flash",
         contents=prompt
