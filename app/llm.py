@@ -33,6 +33,11 @@ COMPANY EXPENSE POLICY — EFFECTIVE 2026
      (e.g. $800 for "office supplies", $2000 for "team lunch for 3 people")
    - Description does not match the selected category
      (e.g. category=travel but description=bought a laptop)
+   
+   - Description mentions vacation destinations (Goa, Maldives, etc.) → always reject
+   - Description says "miscellaneous" → always reject with high confidence, never ambiguous
+   - Description mentions "personal use" explicitly → always reject regardless of category
+   - When category and description completely mismatch → reject with 0.95+ confidence  
 
 3. AUTOMATIC APPROVAL CONDITIONS (approve with high confidence)
    - Clear, specific description with named client or business purpose
